@@ -7,8 +7,9 @@ uint8_t stationType;
 
 void setup() {
   Serial.begin(115200);
-  
-  getCAMdata();
+  uint8_t message[] =  {2,32,3,1,1,1,1,125,123,123,123,123};
+
+  getCAMdata(message);
   printCAM();
 }
 
@@ -31,18 +32,18 @@ void printCAM(){
 }
 
 // function for copying websocket buffer in CAM-variables
-void getCAMdata(){
+void getCAMdata(uint8_t *dataxRx){
   // Get stationID data from buffer[2:6]
-  reverse(&dataRx[2],4);
+  reverse(&dataxRx[2],4);
   memcpy(&stationID,&dataRx[2],4);
 
   // Get stationID data from buffer[2:4]
-  reverse(&dataRx[6],2);
-  memcpy(&deltaTime,&dataRx[6],2);
+  reverse(&dataxRx[6],2);
+  memcpy(&deltaTime,&dataxRx[6],2);
 
   // Get stationID data from half-byte of buffer[9]
-  stationType = dataRx[9] & 0xF;
-  reverse(&dataRx[10],4);
+  stationType = dataxRx[9] & 0xF;
+  reverse(&dataxRx[10],4);
 }
 
 // function for swapping "data" array with "n" elements
