@@ -2,7 +2,7 @@
 
 /*          НАСТРОЙКИ CAM         */
 #define STATION_ID    206267362
-#define STATION_TYPE  11
+#define STATION_TYPE  15
 
   //При каком остатке времени при зеленом свете срабатывает добавка времени по сообщению CAM
 #define CAM_TRIGGER_GREEN_TIME  10
@@ -25,12 +25,15 @@
 /*          НАСТРОЙКИ СВЕТОФОРА         */
       // Время одного такта светофора в мсек
 #define LIGHTS_THREAD_PERIOD  500 
+
+#define TIME_ON_START 0
 // Время работы определенного цвета в тактах
 #define GREEN_TIME 40
-#define YELLOW_TIME 10
+#define TRANS_TIME 8
+#define YELLOW_TIME 4
 #define RED_TIME    40
       // При раскомментировании в Seiral-терминал будет выводиться локальное время тактов светофора
-// #define PRINT_TRAFFIC_TIME
+#define PRINT_TRAFFIC_TIME
       // Цифровые пины для ламп
 #define R_LIGHT 2
 #define Y_LIGHT 3
@@ -56,8 +59,8 @@ uint32_t deltaTime;
 uint8_t stationType;
 
 long lightsMillis=0;
-uint32_t lightsTime=RED_ABSTIME;
-uint8_t  yellowBlink,cur_light;
+int32_t lightsTime=TIME_ON_START;
+uint8_t  blink_flag,cur_light;
 
 void setup() {
 
@@ -111,11 +114,11 @@ void setup() {
         Serial.println(message);
       break;
     case WebSocket::DataType::BINARY:
-        Serial.print("  #WS:  Received ");Serial.print(length);Serial.println(" bytes");
-        
-       
         getCAMdata((uint8_t*)message);
-        printCAM();
+
+        //Serial.print("  #WS:  Received ");Serial.print(length);Serial.println(" bytes");
+        //printCAM();
+
         cam_alarm_func();
         break;
     }
@@ -151,7 +154,7 @@ static void getCAMdata(uint8_t *dataRx){
   memcpy(&deltaTime,&dataRx[6],2);
 
   // Get stationID data from half-byte of buffer[9]
-  stationType = dataRx[9] & 0xF;
+  stationType = ((dataRx[9] & 0xF0)>>4);
   reverse(&dataRx[10],4);
 }
 
@@ -168,10 +171,14 @@ static void printCAM(){
 
 static void cam_alarm_func(){
   if(stationID==STATION_ID && stationType==STATION_TYPE){
-    Serial.println("      -CAM ALARM-");
-    if(cur_light==1 && lightsTime>GREEN_ABSTIME-CAM_TRIGGER_GREEN_TIME){
+    Serial.println("                      -CAM ALARM-");
+
+    if(lightsTime>=GREEN_ABSTIME-CAM_TRIGGER_GREEN_TIME && lightsTime<GREEN_ABSTIME){
       lightsTime-=CAM_ADD_GREEN_TIME;
-      Serial.print("      ADD ");Serial.print(CAM_ADD_GREEN_TIME);Serial.println(" TICKS TO GREEN LIGHT");
+      Serial.print("                        ADD ");Serial.print(CAM_ADD_GREEN_TIME);Serial.println(" TICKS TO GREEN LIGHT");
+      setLight(1,1,1);
+      delay(200);
+      setLight(0,0,1);
     } 
   }
   
@@ -200,58 +207,61 @@ static void lights_thread(){
       Serial.print("T = ");Serial.print(lightsTime);Serial.print("   ");
       #endif
 
-      if(lightsTime<GREEN_TIME){
+      if(lightsTime<GREEN_ABSTIME-TRANS_TIME){
         if(cur_light!=1){
         cur_light = 1;
         Serial.print("GREEN");
-        digitalWrite(R_LIGHT,0);
-        digitalWrite(Y_LIGHT,0);
-        digitalWrite(G_LIGHT,1);
+        setLight(0,0,1);
         }
 
+      }else if(lightsTime<GREEN_ABSTIME && lightsTime>=GREEN_ABSTIME-TRANS_TIME){
+        if(cur_light!=2){
+        cur_light = 2;
+        Serial.print("TRANS GREEN");
+        }
+        if(blink_flag==0){
+            Serial.print(" ");
+            setLight(0,0,0);
+            blink_flag=1;
+        }else{
+            Serial.print("*");
+            setLight(0,0,1);
+            blink_flag=0;
+        }
       }else if(lightsTime>=GREEN_ABSTIME && lightsTime<YELLOW_ABSTIME1){
-        if(cur_light!=2){
-        cur_light = 2;
-        Serial.print("YELLOW1");
-        }
-        if(yellowBlink==0){
-          
-            digitalWrite(R_LIGHT,0);
-            digitalWrite(Y_LIGHT,1);
-            digitalWrite(G_LIGHT,1);
-            yellowBlink=1;
-        }else{
-            digitalWrite(R_LIGHT,0);
-            digitalWrite(Y_LIGHT,0);
-            digitalWrite(G_LIGHT,1);
-            yellowBlink=0;
-        }
-      }else if(lightsTime>=YELLOW_ABSTIME1 && lightsTime<RED_ABSTIME){
         if(cur_light!=3){
-        cur_light = 3;
+          cur_light = 3;
+          Serial.print("YELLOW");
+          setLight(0,1,0);
+        } 
+      }else if(lightsTime>=YELLOW_ABSTIME1 && lightsTime<RED_ABSTIME-TRANS_TIME){
+        if(cur_light!=4){
+        cur_light = 4;
         Serial.print("RED");
-        digitalWrite(R_LIGHT,1);
-        digitalWrite(Y_LIGHT,0);
-        digitalWrite(G_LIGHT,0);
+        setLight(1,0,0);
+        }
+      }else if(lightsTime<RED_ABSTIME && lightsTime>=RED_ABSTIME-TRANS_TIME){
+        if(cur_light!=5){
+        cur_light = 5;
+        Serial.print("TRANS RED");
+        }
+        if(blink_flag==0){
+            Serial.print(" ");
+            setLight(0,0,0);
+            blink_flag=1;
+        }else{
+            Serial.print("*");
+            setLight(1,0,0);
+            blink_flag=0;
         }
 
-        
       }else if(lightsTime>=RED_ABSTIME && lightsTime<YELLOW_ABSTIME2){
-        if(cur_light!=2){
-        cur_light = 2;
-        Serial.print("YELLOW2");
+        if(cur_light!=6){
+        cur_light = 6;
+        Serial.print("YELLOW");
+        setLight(0,1,0);
         }
-        if(yellowBlink==0){
-            digitalWrite(R_LIGHT,1);
-            digitalWrite(Y_LIGHT,1);
-            digitalWrite(G_LIGHT,0);
-            yellowBlink=1;
-        }else{
-            digitalWrite(R_LIGHT,1);
-            digitalWrite(Y_LIGHT,0);
-            digitalWrite(G_LIGHT,0);
-            yellowBlink=0;
-        }
+
       }
       lightsTime++;   
 
@@ -263,3 +273,8 @@ static void lights_thread(){
     }else return;
 }
 
+void setLight(uint8_t r,uint8_t y,uint8_t g){
+  digitalWrite(R_LIGHT,r);
+  digitalWrite(Y_LIGHT,y);
+  digitalWrite(G_LIGHT,g);
+}
